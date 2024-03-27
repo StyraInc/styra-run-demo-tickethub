@@ -10,11 +10,26 @@ services:
     profiles:
       - node
 
-  # TODO
   server-java:
     build: server/java/
+    init: true
+    environment:
+      - OPA_URL=http://opa:8181
+    ports:
+      - "4000:4000"
     profiles:
       - java
+    volumes:
+      - ./server/java:/mnt/tickethub-java:ro
+
+  ui:
+    build: client/react/
+    init: true
+    # TODO: should probably handle exposing the BE API into the FE in a more
+    # idiomatic way, e.g. OPA_URL
+    network_mode: host
+    volumes:
+      - ./client/react:/mnt/tickethub-ui-react:ro
 
   # TODO
   # server-csharp:
