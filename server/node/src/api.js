@@ -9,7 +9,7 @@ export const router = Router();
 const { OK } = StatusCodes;
 
 const prisma = new PrismaClient();
-const includeCustomers = { include: { customers: true } };
+const includeCustomers = { include: { customers: { select: { name: true } } } };
 
 // setup authz
 const authz = new Authorizer(process.env.OPA_URL || "http://127.0.0.1:8181/");
@@ -20,13 +20,14 @@ router.post(
   "/tickets/:id/resolve",
   [param("id").isInt().toInt()],
   async (req, res) => {
-    const {
-      params: { id },
-    } = req;
-    await authz.authorized(path, { action: "resolve" }, req);
+    const conditions = await authz.authorizedFilter(
+      "tickets/conditions",
+      { action: "resolve" },
+      req,
+    );
 
     const ticket = await prisma.tickets.update({
-      where: { id },
+      where: { id: req.params.id, ...conditions },
       data: {
         resolved: req.body.resolved ? true : false,
         last_updated: now(),
@@ -43,7 +44,7 @@ router.post("/tickets", async (req, res) => {
 
   const {
     auth: {
-      tenant: { id: tenantId, name: tenantName },
+      tenant: { id: tenantId },
     },
     body: { customer, ...ticketData },
   } = req;
@@ -79,12 +80,16 @@ router.post("/tickets", async (req, res) => {
 
 // list all tickets
 router.get("/tickets", async (req, res) => {
-  await authz.authorized(path, { action: "list" }, req);
+  const conditions = await authz.authorizedFilter(
+    "tickets/conditions",
+    { action: "list" },
+    req,
+  );
 
   const tickets = (
     await prisma.tickets.findMany({
-      where: { tenant: req.auth.tenant.id },
-      include: { customers: true },
+      where: { tenant: req.auth.tenant.id, ...conditions },
+      ...includeCustomers,
     })
   ).map((ticket) => toTicket(ticket));
   return res.status(OK).json({ tickets });
@@ -92,13 +97,14 @@ router.get("/tickets", async (req, res) => {
 
 // get ticket
 router.get("/tickets/:id", [param("id").isInt().toInt()], async (req, res) => {
-  const {
-    params: { id },
-  } = req;
-  await authz.authorized(path, { action: "get", id }, req);
+  const conditions = await authz.authorizedFilter(
+    "tickets/conditions",
+    { action: "get" },
+    req,
+  );
 
   const ticket = await prisma.tickets.findUniqueOrThrow({
-    where: { id },
+    where: { id: req.params.id, ...conditions },
     ...includeCustomers,
   });
   return res.status(OK).json(toTicket(ticket));
